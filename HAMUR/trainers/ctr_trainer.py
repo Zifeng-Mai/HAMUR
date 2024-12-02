@@ -123,6 +123,7 @@ class CTRTrainer(object):
         targets1, predicts1 = list() ,list()
         targets2, predicts2 = list() ,list()
         targets3, predicts3 = list() ,list()
+        targets4, predicts4 = list() ,list()
         with torch.no_grad():
             tk0 = tqdm.tqdm(data_loader, desc="predict", smoothing=0, mininterval=1.0)
             for i, (x_dict, y) in enumerate(tk0):
@@ -132,7 +133,7 @@ class CTRTrainer(object):
 
                 y = y.to(self.device)
                 y_pred = model(x_dict)
-                for d in range(3):
+                for d in range(4):
                     domain_mask = (domain_id == d)
                     domain_mask_list.append(domain_mask)
 
@@ -150,21 +151,28 @@ class CTRTrainer(object):
                 y_pred_3 = y_pred[domain_mask_list[2]].tolist()
                 targets3.extend(y3)
                 predicts3.extend(y_pred_3)
+
+                y4 = y[domain_mask_list[3]].tolist()
+                y_pred_4 = y_pred[domain_mask_list[3]].tolist()
+                targets4.extend(y4)
+                predicts4.extend(y_pred_4)
 
                 targets.extend(y.tolist())
                 predicts.extend(y_pred.tolist())
         domain1_val = log_loss(targets1, predicts1) if predicts1 else None
         domain2_val = log_loss(targets2, predicts2) if predicts2 else None
         domain3_val = log_loss(targets3, predicts3) if predicts3 else None
+        domain4_val = log_loss(targets4, predicts4) if predicts4 else None
         total_val = log_loss(targets, predicts) if predicts else None
 
-        return domain1_val, domain2_val, domain3_val, total_val
+        return domain1_val, domain2_val, domain3_val, domain4_val, total_val
     def evaluate_multi_domain_auc(self, model, data_loader):
         model.eval()
         targets, predicts   = list() ,list()
         targets1, predicts1 = list() ,list()
         targets2, predicts2 = list() ,list()
         targets3, predicts3 = list() ,list()
+        targets4, predicts4 = list() ,list()
         with torch.no_grad():
             tk0 = tqdm.tqdm(data_loader, desc="predict", smoothing=0, mininterval=1.0)
             for i, (x_dict, y) in enumerate(tk0):
@@ -174,7 +182,7 @@ class CTRTrainer(object):
 
                 y = y.to(self.device)
                 y_pred = model(x_dict)
-                for d in range(3):
+                for d in range(4):
                     domain_mask = (domain_id == d)
                     domain_mask_list.append(domain_mask)
 
@@ -193,14 +201,20 @@ class CTRTrainer(object):
                 targets3.extend(y3)
                 predicts3.extend(y_pred_3)
 
+                y4 = y[domain_mask_list[3]].tolist()
+                y_pred_4 = y_pred[domain_mask_list[3]].tolist()
+                targets4.extend(y4)
+                predicts4.extend(y_pred_4)
+
                 targets.extend(y.tolist())
                 predicts.extend(y_pred.tolist())
         domain1_val = self.evaluate_fn(targets1, predicts1) if predicts1 else None
         domain2_val = self.evaluate_fn(targets2, predicts2) if predicts2 else None
         domain3_val = self.evaluate_fn(targets3, predicts3) if predicts3 else None
+        domain4_val = self.evaluate_fn(targets4, predicts4) if predicts4 else None
         total_val   = self.evaluate_fn(targets, predicts) if predicts else None
 
-        return domain1_val, domain2_val, domain3_val, total_val
+        return domain1_val, domain2_val, domain3_val, domain4_val, total_val
 
     def predict(self, model, data_loader):
         model.eval()
