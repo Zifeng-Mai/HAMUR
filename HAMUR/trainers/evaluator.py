@@ -28,13 +28,9 @@ class Evaluator():
             all_label.append(label)
             all_domain_id.append(domain_id)
         
-        return self.eval(torch.tensor(logits), torch.tensor(label), torch.tensor(domain_id))
+        return self.eval(torch.tensor(all_logits), torch.tensor(all_label), torch.tensor(all_domain_id))
 
     def eval(self, logits, label, domain_id):
-        print(logits.shape)
-        print(label.shape)
-        print(domain_id.shape)
-        assert False
         # logits/label: (n_users, 100)
         # domain_id: (n_users)
         result = {}
