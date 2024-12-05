@@ -62,7 +62,7 @@ class CTRTrainer(object):
         total_loss = 0
         tk0 = tqdm.tqdm(data_loader, desc="train", smoothing=0, mininterval=1.0)
         for i, (x_dict, y) in enumerate(tk0):
-            for k, v in x_dict:
+            for k, v in x_dict.items():
                 print(f"{k}: {v.shape}")
             print(y.shape)
             x_dict = {k: v.to(self.device) for k, v in x_dict.items()}  #tensor to GPU
