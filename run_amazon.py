@@ -11,27 +11,13 @@ from HAMUR.utils.data import DataGenerator
 from HAMUR.models.multi_domain import Mlp_7_Layer, Mlp_2_Layer, MLP_adap_2_layer_1_adp, DCN_MD, DCN_MD_adp, WideDeep_MD, WideDeep_MD_adp
 
 def get_movielens_data_rank_multidomain(data_path):
-    data = pd.read_csv(data_path+"/ml-1m-sample.csv")
     train_data = pd.read_csv(data_path+"/train_iter.csv")
     valid_data = pd.read_csv(data_path+"/valid_iter.csv")
     test_data = pd.read_csv(data_path+"/test_iter.csv")
-    user2domain = json.load(data_path+"/user2domain_mapper.json")
-    user2domain = {int(u): d for u, d in user2domain.items()}
-    train_data['domain_id'] = train_data['user_id'].map(user2domain)
-    valid_data['domain_id'] = valid_data['user_id'].map(user2domain)
-    test_data['domain_id'] = test_data['user_id'].map(user2domain)
+    data = pd.concat([train_data, valid_data, test_data])
 
-    domain_num = data['domain_id'].nunique()
+    domain_num = 4
     sparse_features = ['user_id', 'item_id', "domain_id"]
-
-
-    for feature in sparse_features:
-        lbe = LabelEncoder()
-        lbe = lbe.fit(data[feature])
-        train_data[feature] = lbe.transform(train_data[feature]) + 1
-        valid_data[feature] = lbe.transform(valid_data[feature]) + 1
-        test_data[feature] = lbe.transform(test_data[feature]) + 1
-
 
     dense_feas = []
     sparse_feas = [SparseFeature(feature_name, vocab_size=data[feature_name].nunique(), embed_dim=16) for feature_name
@@ -126,7 +112,7 @@ def main(dataset_path, model_name, epoch, learning_rate, batch_size, weight_deca
 if __name__ == '__main__':
     import argparse
     parser = argparse.ArgumentParser()
-    parser.add_argument('--dataset_path', default="../../data/A-Arts_A-Games_A-Instruments_A-Pantry")
+    parser.add_argument('--dataset_path', default="./data")
     parser.add_argument('--model_name', default='mlp_adp')
     parser.add_argument('--epoch', type=int, default=100)  #100
     parser.add_argument('--learning_rate', type=float, default=1e-3)
