@@ -121,7 +121,7 @@ if __name__ == '__main__':
     parser.add_argument('--learning_rate', type=float, default=1e-3)
     parser.add_argument('--batch_size', type=int, default=4096)  #4096
     parser.add_argument('--weight_decay', type=float, default=1e-5)
-    parser.add_argument('--device', default='cuda:0')  #cuda:0
+    parser.add_argument('--device', default='cpu')  #cuda:0
     parser.add_argument('--save_dir', default='./')
     parser.add_argument('--seed', type=int, default=2024)
 
