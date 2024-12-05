@@ -308,7 +308,7 @@ class MLP_adap_2_layer_1_adp(nn.Module):
 
     def forward(self, x):
 
-        domain_id = x["domain_indicator"].clone().detach()
+        domain_id = x["domain_id"].clone().detach()
 
         emb = self.embedding(x, self.features, squeeze_dim=True)  # [batch_size,total_dims]
 
