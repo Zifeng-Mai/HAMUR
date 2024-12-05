@@ -21,7 +21,7 @@ def get_movielens_data_rank_multidomain(data_path):
     sparse_features = ['user_id', 'item_id', "domain_id"]
 
     dense_feas = []
-    sparse_feas = [SparseFeature(feature_name, vocab_size=data[feature_name].nunique(), embed_dim=16) for feature_name
+    sparse_feas = [SparseFeature(feature_name, vocab_size=data[feature_name].nunique()+1, embed_dim=16) for feature_name
                    in sparse_features]
 
 
