@@ -31,6 +31,10 @@ class Evaluator():
         return self.eval(torch.tensor(logits), torch.tensor(label), torch.tensor(domain_id))
 
     def eval(self, logits, label, domain_id):
+        print(logits.shape)
+        print(label.shape)
+        print(domain_id.shape)
+        assert False
         # logits/label: (n_users, 100)
         # domain_id: (n_users)
         result = {}
