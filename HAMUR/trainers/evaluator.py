@@ -4,6 +4,7 @@ import pandas as pd
 import torch
 import itertools
 from sklearn.metrics import ndcg_score
+from tqdm import tqdm
 
 class Evaluator():
 
@@ -19,10 +20,10 @@ class Evaluator():
         all_label = []
         all_domain_id = []
 
-        for user_id, user_df in pred_df.groupby('user_id'):
+        for user_id, user_df in tqdm(pred_df.groupby('user_id')):
             domain_id = user_df['domain_id'].iloc[0]
             logits = user_df['logits'].tolist()
-            label = user_df['lable'].tolist()
+            label = user_df['label'].tolist()
             all_logits.append(logits)
             all_label.append(label)
             all_domain_id.append(domain_id)
