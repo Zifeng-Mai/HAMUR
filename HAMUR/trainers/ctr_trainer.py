@@ -4,6 +4,8 @@ import torch
 import tqdm
 from sklearn.metrics import roc_auc_score,log_loss
 from ..basic.callback import EarlyStopper
+import pandas as pd
+from HAMUR.trainers.evaluator import Evaluator
 
 
 class CTRTrainer(object):
@@ -34,6 +36,7 @@ class CTRTrainer(object):
         device="cpu",
         gpus=None,
         model_path="./",
+        domain_weight = None
     ):
         self.model = model  # for uniform weights save method in one gpu or multi gpu
         if gpus is None:
@@ -56,20 +59,16 @@ class CTRTrainer(object):
         self.n_epoch = n_epoch
         self.early_stopper = EarlyStopper(patience=earlystop_patience)
         self.model_path = model_path
+        self.evaluator = Evaluator(domain_weight)
 
     def train_one_epoch(self, data_loader, log_interval=10):
         self.model.train()
         total_loss = 0
         tk0 = tqdm.tqdm(data_loader, desc="train", smoothing=0, mininterval=1.0)
         for i, (x_dict, y) in enumerate(tk0):
-            for k, v in x_dict.items():
-                print(f"{k}: {v.shape}")
-            print(y.shape)
             x_dict = {k: v.to(self.device) for k, v in x_dict.items()}  #tensor to GPU
             y = y.to(self.device)
             y_pred = self.model(x_dict)
-            print(y_pred.shape)
-            assert False
             loss = self.criterion(y_pred, y.float())
             self.model.zero_grad()
             loss.backward()
@@ -88,138 +87,156 @@ class CTRTrainer(object):
                     print("Current lr : {}".format(self.optimizer.state_dict()['param_groups'][0]['lr']))
                 self.scheduler.step()  #update lr in epoch level by scheduler
             if val_dataloader:
-                auc = self.evaluate(self.model, val_dataloader)
-                log_loss = self.evaluate_logloss(self.model, val_dataloader)
-                print('epoch:', epoch_i, 'validation: auc:', auc, 'log loss:', log_loss)
-                if self.early_stopper.stop_training(auc, self.model.state_dict()):
-                    print(f'validation: best auc: {self.early_stopper.best_auc}')
+                metric_dict = self.evaluate(self.model, val_dataloader)
+                print('epoch:', epoch_i, 'validation', metric_dict['weighted'])
+                if self.early_stopper.stop_training(metric_dict['weighted']['HitRate@5'], self.model.state_dict()):
+                    print(f'validation: best metric: {self.early_stopper.best_auc}')
                     self.model.load_state_dict(self.early_stopper.best_weights)
                     break
         torch.save(self.model.state_dict(), os.path.join(self.model_path, "model.pth"))  #save best auc model
 
+    @torch.no_grad()
     def evaluate(self, model, data_loader):
         model.eval()
-        targets, predicts = list(), list()
-        with torch.no_grad():
-            tk0 = tqdm.tqdm(data_loader, desc="validation", smoothing=0, mininterval=1.0)
-            for i, (x_dict, y) in enumerate(tk0):
-                x_dict = {k: v.to(self.device) for k, v in x_dict.items()}
-                y = y.to(self.device)
-                y_pred = model(x_dict)
-                targets.extend(y.tolist())
-                predicts.extend(y_pred.tolist())
-        return self.evaluate_fn(targets, predicts)
-    def evaluate_logloss(self, model, data_loader):
-        model.eval()
-        targets, predicts = list(), list()
-        with torch.no_grad():
-            tk0 = tqdm.tqdm(data_loader, desc="validation", smoothing=0, mininterval=1.0)
-            for i, (x_dict, y) in enumerate(tk0):
-                x_dict = {k: v.to(self.device) for k, v in x_dict.items()}
-                y = y.to(self.device)
-                y_pred = model(x_dict)
-                targets.extend(y.tolist())
-                predicts.extend(y_pred.tolist())
-        return log_loss(targets,predicts)
+        tk0 = tqdm.tqdm(data_loader, desc="validation", smoothing=0, mininterval=1.0)
+        pred_df = {'user_id': [], 'logits': [], 'domain_id': [], 'label': []}
+        for i, (x_dict, y) in enumerate(tk0):
+            y = y.tolist()
+            user_id = x_dict['user_id'].tolist()
+            domain_id = x_dict['domain_id'].tolist()
+            x_dict = {k: v.to(self.device) for k, v in x_dict.items()}
+            y_pred = model(x_dict).cpu().tolist()
+            pred_df['user_id'].extend(user_id)
+            pred_df['domain_id'].extend(domain_id)
+            pred_df['label'].extend(y)
+            pred_df['logits'].extend(y_pred)
+        pred_df = pd.DataFrame(pred_df)
+        metric_dict = self.evaluator(pred_df)
+        return metric_dict
 
-    def evaluate_multi_domain_logloss(self, model, data_loader):
-        model.eval()
-        targets, predicts   = list() ,list()
-        targets1, predicts1 = list() ,list()
-        targets2, predicts2 = list() ,list()
-        targets3, predicts3 = list() ,list()
-        targets4, predicts4 = list() ,list()
-        with torch.no_grad():
-            tk0 = tqdm.tqdm(data_loader, desc="predict", smoothing=0, mininterval=1.0)
-            for i, (x_dict, y) in enumerate(tk0):
-                domain_mask_list = []
-                x_dict = {k: v.to(self.device) for k, v in x_dict.items()}
-                domain_id = x_dict["domain_indicator"].clone().detach()
+    # def evaluate(self, model, data_loader):
+    #     model.eval()
+    #     targets, predicts = list(), list()
+    #     with torch.no_grad():
+    #         tk0 = tqdm.tqdm(data_loader, desc="validation", smoothing=0, mininterval=1.0)
+    #         for i, (x_dict, y) in enumerate(tk0):
+    #             x_dict = {k: v.to(self.device) for k, v in x_dict.items()}
+    #             y = y.to(self.device)
+    #             y_pred = model(x_dict)
+    #             targets.extend(y.tolist())
+    #             predicts.extend(y_pred.tolist())
+    #     return self.evaluate_fn(targets, predicts)
+    # def evaluate_logloss(self, model, data_loader):
+    #     model.eval()
+    #     targets, predicts = list(), list()
+    #     with torch.no_grad():
+    #         tk0 = tqdm.tqdm(data_loader, desc="validation", smoothing=0, mininterval=1.0)
+    #         for i, (x_dict, y) in enumerate(tk0):
+    #             x_dict = {k: v.to(self.device) for k, v in x_dict.items()}
+    #             y = y.to(self.device)
+    #             y_pred = model(x_dict)
+    #             targets.extend(y.tolist())
+    #             predicts.extend(y_pred.tolist())
+    #     return log_loss(targets,predicts)
 
-                y = y.to(self.device)
-                y_pred = model(x_dict)
-                for d in range(4):
-                    domain_mask = (domain_id == d)
-                    domain_mask_list.append(domain_mask)
+    # def evaluate_multi_domain_logloss(self, model, data_loader):
+    #     model.eval()
+    #     targets, predicts   = list() ,list()
+    #     targets1, predicts1 = list() ,list()
+    #     targets2, predicts2 = list() ,list()
+    #     targets3, predicts3 = list() ,list()
+    #     targets4, predicts4 = list() ,list()
+    #     with torch.no_grad():
+    #         tk0 = tqdm.tqdm(data_loader, desc="predict", smoothing=0, mininterval=1.0)
+    #         for i, (x_dict, y) in enumerate(tk0):
+    #             domain_mask_list = []
+    #             x_dict = {k: v.to(self.device) for k, v in x_dict.items()}
+    #             domain_id = x_dict["domain_indicator"].clone().detach()
 
-                y1 = y[domain_mask_list[0]].tolist()
-                y_pred_1 = y_pred[domain_mask_list[0]].tolist()
-                targets1.extend(y1)
-                predicts1.extend(y_pred_1)
+    #             y = y.to(self.device)
+    #             y_pred = model(x_dict)
+    #             for d in range(4):
+    #                 domain_mask = (domain_id == d)
+    #                 domain_mask_list.append(domain_mask)
 
-                y2 = y[domain_mask_list[1]].tolist()
-                y_pred_2 = y_pred[domain_mask_list[1]].tolist()
-                targets2.extend(y2)
-                predicts2.extend(y_pred_2)
+    #             y1 = y[domain_mask_list[0]].tolist()
+    #             y_pred_1 = y_pred[domain_mask_list[0]].tolist()
+    #             targets1.extend(y1)
+    #             predicts1.extend(y_pred_1)
 
-                y3 = y[domain_mask_list[2]].tolist()
-                y_pred_3 = y_pred[domain_mask_list[2]].tolist()
-                targets3.extend(y3)
-                predicts3.extend(y_pred_3)
+    #             y2 = y[domain_mask_list[1]].tolist()
+    #             y_pred_2 = y_pred[domain_mask_list[1]].tolist()
+    #             targets2.extend(y2)
+    #             predicts2.extend(y_pred_2)
 
-                y4 = y[domain_mask_list[3]].tolist()
-                y_pred_4 = y_pred[domain_mask_list[3]].tolist()
-                targets4.extend(y4)
-                predicts4.extend(y_pred_4)
+    #             y3 = y[domain_mask_list[2]].tolist()
+    #             y_pred_3 = y_pred[domain_mask_list[2]].tolist()
+    #             targets3.extend(y3)
+    #             predicts3.extend(y_pred_3)
 
-                targets.extend(y.tolist())
-                predicts.extend(y_pred.tolist())
-        domain1_val = log_loss(targets1, predicts1) if predicts1 else None
-        domain2_val = log_loss(targets2, predicts2) if predicts2 else None
-        domain3_val = log_loss(targets3, predicts3) if predicts3 else None
-        domain4_val = log_loss(targets4, predicts4) if predicts4 else None
-        total_val = log_loss(targets, predicts) if predicts else None
+    #             y4 = y[domain_mask_list[3]].tolist()
+    #             y_pred_4 = y_pred[domain_mask_list[3]].tolist()
+    #             targets4.extend(y4)
+    #             predicts4.extend(y_pred_4)
 
-        return domain1_val, domain2_val, domain3_val, domain4_val, total_val
-    def evaluate_multi_domain_auc(self, model, data_loader):
-        model.eval()
-        targets, predicts   = list() ,list()
-        targets1, predicts1 = list() ,list()
-        targets2, predicts2 = list() ,list()
-        targets3, predicts3 = list() ,list()
-        targets4, predicts4 = list() ,list()
-        with torch.no_grad():
-            tk0 = tqdm.tqdm(data_loader, desc="predict", smoothing=0, mininterval=1.0)
-            for i, (x_dict, y) in enumerate(tk0):
-                domain_mask_list = []
-                x_dict = {k: v.to(self.device) for k, v in x_dict.items()}
-                domain_id = x_dict["domain_indicator"].clone().detach()
+    #             targets.extend(y.tolist())
+    #             predicts.extend(y_pred.tolist())
+    #     domain1_val = log_loss(targets1, predicts1) if predicts1 else None
+    #     domain2_val = log_loss(targets2, predicts2) if predicts2 else None
+    #     domain3_val = log_loss(targets3, predicts3) if predicts3 else None
+    #     domain4_val = log_loss(targets4, predicts4) if predicts4 else None
+    #     total_val = log_loss(targets, predicts) if predicts else None
 
-                y = y.to(self.device)
-                y_pred = model(x_dict)
-                for d in range(4):
-                    domain_mask = (domain_id == d)
-                    domain_mask_list.append(domain_mask)
+    #     return domain1_val, domain2_val, domain3_val, domain4_val, total_val
+    # def evaluate_multi_domain_auc(self, model, data_loader):
+    #     model.eval()
+    #     targets, predicts   = list() ,list()
+    #     targets1, predicts1 = list() ,list()
+    #     targets2, predicts2 = list() ,list()
+    #     targets3, predicts3 = list() ,list()
+    #     targets4, predicts4 = list() ,list()
+    #     with torch.no_grad():
+    #         tk0 = tqdm.tqdm(data_loader, desc="predict", smoothing=0, mininterval=1.0)
+    #         for i, (x_dict, y) in enumerate(tk0):
+    #             domain_mask_list = []
+    #             x_dict = {k: v.to(self.device) for k, v in x_dict.items()}
+    #             domain_id = x_dict["domain_indicator"].clone().detach()
 
-                y1 = y[domain_mask_list[0]].tolist()
-                y_pred_1 = y_pred[domain_mask_list[0]].tolist()
-                targets1.extend(y1)
-                predicts1.extend(y_pred_1)
+    #             y = y.to(self.device)
+    #             y_pred = model(x_dict)
+    #             for d in range(4):
+    #                 domain_mask = (domain_id == d)
+    #                 domain_mask_list.append(domain_mask)
 
-                y2 = y[domain_mask_list[1]].tolist()
-                y_pred_2 = y_pred[domain_mask_list[1]].tolist()
-                targets2.extend(y2)
-                predicts2.extend(y_pred_2)
+    #             y1 = y[domain_mask_list[0]].tolist()
+    #             y_pred_1 = y_pred[domain_mask_list[0]].tolist()
+    #             targets1.extend(y1)
+    #             predicts1.extend(y_pred_1)
 
-                y3 = y[domain_mask_list[2]].tolist()
-                y_pred_3 = y_pred[domain_mask_list[2]].tolist()
-                targets3.extend(y3)
-                predicts3.extend(y_pred_3)
+    #             y2 = y[domain_mask_list[1]].tolist()
+    #             y_pred_2 = y_pred[domain_mask_list[1]].tolist()
+    #             targets2.extend(y2)
+    #             predicts2.extend(y_pred_2)
 
-                y4 = y[domain_mask_list[3]].tolist()
-                y_pred_4 = y_pred[domain_mask_list[3]].tolist()
-                targets4.extend(y4)
-                predicts4.extend(y_pred_4)
+    #             y3 = y[domain_mask_list[2]].tolist()
+    #             y_pred_3 = y_pred[domain_mask_list[2]].tolist()
+    #             targets3.extend(y3)
+    #             predicts3.extend(y_pred_3)
 
-                targets.extend(y.tolist())
-                predicts.extend(y_pred.tolist())
-        domain1_val = self.evaluate_fn(targets1, predicts1) if predicts1 else None
-        domain2_val = self.evaluate_fn(targets2, predicts2) if predicts2 else None
-        domain3_val = self.evaluate_fn(targets3, predicts3) if predicts3 else None
-        domain4_val = self.evaluate_fn(targets4, predicts4) if predicts4 else None
-        total_val   = self.evaluate_fn(targets, predicts) if predicts else None
+    #             y4 = y[domain_mask_list[3]].tolist()
+    #             y_pred_4 = y_pred[domain_mask_list[3]].tolist()
+    #             targets4.extend(y4)
+    #             predicts4.extend(y_pred_4)
 
-        return domain1_val, domain2_val, domain3_val, domain4_val, total_val
+    #             targets.extend(y.tolist())
+    #             predicts.extend(y_pred.tolist())
+    #     domain1_val = self.evaluate_fn(targets1, predicts1) if predicts1 else None
+    #     domain2_val = self.evaluate_fn(targets2, predicts2) if predicts2 else None
+    #     domain3_val = self.evaluate_fn(targets3, predicts3) if predicts3 else None
+    #     domain4_val = self.evaluate_fn(targets4, predicts4) if predicts4 else None
+    #     total_val   = self.evaluate_fn(targets, predicts) if predicts else None
+
+    #     return domain1_val, domain2_val, domain3_val, domain4_val, total_val
 
     def predict(self, model, data_loader):
         model.eval()

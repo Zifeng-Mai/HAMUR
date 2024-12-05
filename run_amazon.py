@@ -15,6 +15,7 @@ def get_movielens_data_rank_multidomain(data_path):
     valid_data = pd.read_csv(data_path+"/valid_inter.csv")
     test_data = pd.read_csv(data_path+"/test_inter.csv")
     data = pd.concat([train_data, valid_data, test_data])
+    domain_weight = train_data['domain_id'].value_counts(normalize=True).to_dict()
 
     domain_num = 4
     sparse_features = ['user_id', 'item_id', "domain_id"]
@@ -33,7 +34,7 @@ def get_movielens_data_rank_multidomain(data_path):
     del test_data[target]
 
 
-    return dense_feas, sparse_feas, train_data, valid_data, test_data, train_y, valid_y, test_y, domain_num
+    return dense_feas, sparse_feas, train_data, valid_data, test_data, train_y, valid_y, test_y, domain_num, domain_weight
 
 def map_group_indicator(age, list_group):
     l = len(list(list_group))
@@ -74,7 +75,7 @@ def df_to_dict_multi_domain(data, columns):
 
 def main(dataset_path, model_name, epoch, learning_rate, batch_size, weight_decay, device, save_dir, seed):
     torch.manual_seed(seed)
-    dense_feas, sparse_feas, train_x, valid_x, test_x, train_label, valid_label, test_label, domain_num= get_movielens_data_rank_multidomain(dataset_path)
+    dense_feas, sparse_feas, train_x, valid_x, test_x, train_label, valid_label, test_label, domain_num, domain_weight = get_movielens_data_rank_multidomain(dataset_path)
     dg = DataGenerator(train_x, train_label)
     train_dataloader, val_dataloader, test_dataloader = dg.generate_dataloader(batch_size=batch_size, x_test=test_x, x_val=valid_x,
                                                                                y_test=test_label, y_val=valid_label)
@@ -91,16 +92,18 @@ def main(dataset_path, model_name, epoch, learning_rate, batch_size, weight_deca
         model = WideDeep_MD(wide_features=dense_feas,num_domains= domain_num, deep_features=sparse_feas, mlp_params={"dims": [256, 128], "dropout": 0.2, "activation": "relu"})
     elif model_name == "wd_md_adp":
         model = WideDeep_MD_adp(wide_features=dense_feas,num_domains= domain_num, deep_features=sparse_feas,  k= 45,mlp_params={"dims": [256, 128], "dropout": 0.2, "activation": "relu"}, hyper_dims=[128])
-    ctr_trainer = CTRTrainer(model, optimizer_params={"lr": learning_rate, "weight_decay": weight_decay}, n_epoch=epoch, earlystop_patience=10, device=device, model_path=save_dir,scheduler_params={"step_size": 4,"gamma": 0.85})
+    ctr_trainer = CTRTrainer(model, optimizer_params={"lr": learning_rate, "weight_decay": weight_decay}, n_epoch=epoch, earlystop_patience=10, device=device, model_path=save_dir,scheduler_params={"step_size": 4,"gamma": 0.85}, domain_weight=domain_weight)
     #scheduler_fn=torch.optim.lr_scheduler.StepLR,scheduler_params={"step_size": 2,"gamma": 0.8},
     ctr_trainer.fit(train_dataloader, val_dataloader)
-    auc1,auc2,auc3,auc4,auc = ctr_trainer.evaluate_multi_domain_auc(ctr_trainer.model, test_dataloader)
-    log1,log2,log3,log4,log = ctr_trainer.evaluate_multi_domain_logloss(ctr_trainer.model, test_dataloader)
-    print(f'test auc: {auc} | test logloss: {log}')
-    print(f'domain 1 test auc: {auc1} | test logloss: {log1}')
-    print(f'domain 2 test auc: {auc2} | test logloss: {log2}')
-    print(f'domain 3 test auc: {auc3} | test logloss: {log3}')
-    print(f'domain 4 test auc: {auc4} | test logloss: {log4}')
+    metric_dict = ctr_trainer.evaluate(ctr_trainer.model, test_dataloader)
+    print(metric_dict)
+    # auc1,auc2,auc3,auc4,auc = ctr_trainer.evaluate_multi_domain_auc(ctr_trainer.model, test_dataloader)
+    # log1,log2,log3,log4,log = ctr_trainer.evaluate_multi_domain_logloss(ctr_trainer.model, test_dataloader)
+    # print(f'test auc: {auc} | test logloss: {log}')
+    # print(f'domain 1 test auc: {auc1} | test logloss: {log1}')
+    # print(f'domain 2 test auc: {auc2} | test logloss: {log2}')
+    # print(f'domain 3 test auc: {auc3} | test logloss: {log3}')
+    # print(f'domain 4 test auc: {auc4} | test logloss: {log4}')
 
     # save csv file
     # import csv
