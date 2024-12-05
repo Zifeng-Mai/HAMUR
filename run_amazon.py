@@ -11,9 +11,9 @@ from HAMUR.utils.data import DataGenerator
 from HAMUR.models.multi_domain import Mlp_7_Layer, Mlp_2_Layer, MLP_adap_2_layer_1_adp, DCN_MD, DCN_MD_adp, WideDeep_MD, WideDeep_MD_adp
 
 def get_movielens_data_rank_multidomain(data_path):
-    train_data = pd.read_csv(data_path+"/train_iter.csv")
-    valid_data = pd.read_csv(data_path+"/valid_iter.csv")
-    test_data = pd.read_csv(data_path+"/test_iter.csv")
+    train_data = pd.read_csv(data_path+"/train_inter.csv")
+    valid_data = pd.read_csv(data_path+"/valid_inter.csv")
+    test_data = pd.read_csv(data_path+"/test_inter.csv")
     data = pd.concat([train_data, valid_data, test_data])
 
     domain_num = 4
