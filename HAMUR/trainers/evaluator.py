@@ -21,6 +21,7 @@ class Evaluator():
         all_domain_id = []
 
         for user_id, user_df in tqdm(pred_df.groupby('user_id')):
+            assert len(user_df) == 100, len(user_df)
             domain_id = user_df['domain_id'].iloc[0]
             logits = user_df['logits'].tolist()
             label = user_df['label'].tolist()
