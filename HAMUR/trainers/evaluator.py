@@ -19,9 +19,6 @@ class Evaluator():
         all_logits = []
         all_label = []
         all_domain_id = []
-        print(pred_df['user_id'].nunique())
-        print(len(pred_df))
-        assert False
 
         for user_id, user_df in tqdm(pred_df.groupby('user_id')):
             domain_id = user_df['domain_id'].iloc[0]
